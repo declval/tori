@@ -1,0 +1,12 @@
+{
+    "author": "declval",
+    "bin": "src/tori.js",
+    "description": "A command line BitTorrent client written in JavaScript with the only runtime dependency being Node.js",
+    "devDependencies": {
+        "prettier": "^3.4.2"
+    },
+    "license": "GPL-3.0-only",
+    "name": "tori",
+    "type": "module",
+    "version": "0.1.0"
+}
