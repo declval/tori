@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { createHash } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { open, stat, statfs } from "node:fs/promises";
@@ -32,7 +32,9 @@ export class Download extends EventEmitter {
         this.prevTime = null;
         this.statusTimeout = null;
         this.tracker = new Tracker(
-            this.metadata.announce,
+            this.metadata.announceList !== undefined
+                ? this.metadata.announceList.map((tier) => shuffle(tier))
+                : [[this.metadata.announce]],
             this.metadata.infoHash
         );
         this.uploaded = 0;
@@ -280,4 +282,15 @@ function formatSpeed(speed) {
     }
 
     return `${speed.toFixed(1)}${units[i]}/s`;
+}
+
+function shuffle(array) {
+    const shuffled = [...array];
+
+    for (let i = 0; i < shuffled.length - 1; ++i) {
+        const j = randomInt(i, shuffled.length);
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    return shuffled;
 }

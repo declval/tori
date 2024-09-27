@@ -10,8 +10,8 @@ export class Torrent {
         }
 
         if (decoded["announce-list"] !== undefined) {
-            this.announceList = decoded["announce-list"].map((list) =>
-                list.map((announce) => announce.toString())
+            this.announceList = decoded["announce-list"].map((tier) =>
+                tier.map((announce) => announce.toString())
             );
         }
 

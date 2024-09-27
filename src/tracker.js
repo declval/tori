@@ -7,9 +7,9 @@ export class Tracker {
     #infoHash;
     #peerIPs;
 
-    constructor(uri, infoHash) {
+    constructor(announceList, infoHash) {
         this.#infoHash = infoHash;
-        this.uri = uri;
+        this.announceList = announceList;
 
         this.#peerIPs = new Set();
         this.complete = null;
@@ -39,18 +39,40 @@ export class Tracker {
             console.log(`Tracker request${event === "" ? "" : ` (${event})`}`);
         }
 
-        const url = new URL(this.uri);
+        let response = null;
 
-        url.searchParams.set("downloaded", downloaded.toString());
-        url.searchParams.set("event", event);
-        url.searchParams.set("left", left.toString());
-        url.searchParams.set("port", "6881");
-        url.searchParams.set("uploaded", uploaded.toString());
+        outer: for (const tier of this.announceList) {
+            for (let i = 0; i < tier.length; ++i) {
+                const announce = tier[i];
 
-        url.search += `&info_hash=${percentEncode(this.#infoHash)}`;
-        url.search += `&peer_id=${percentEncode(options.peerID)}`;
+                const url = new URL(announce);
 
-        const response = await fetch(url);
+                url.searchParams.set("downloaded", downloaded.toString());
+                url.searchParams.set("event", event);
+                url.searchParams.set("left", left.toString());
+                url.searchParams.set("port", "6881");
+                url.searchParams.set("uploaded", uploaded.toString());
+
+                url.search += `&info_hash=${percentEncode(this.#infoHash)}`;
+                url.search += `&peer_id=${percentEncode(options.peerID)}`;
+
+                try {
+                    response = await fetch(url);
+
+                    tier.unshift(...tier.splice(i, 1));
+
+                    break outer;
+                } catch (error) {
+                    if (options.verbose) {
+                        console.error(error.message);
+                    }
+                }
+            }
+        }
+
+        if (response === null) {
+            throw new Error("Not a single tracker responded");
+        }
 
         const decoded = decode(Buffer.from(await response.arrayBuffer()));
 
