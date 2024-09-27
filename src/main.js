@@ -31,12 +31,12 @@ export const options = values;
 
 options.peerID = Buffer.alloc(20);
 
-const written = options.peerID.write("-to0010-");
+const written = options.peerID.write("-to0020-");
 
 randomFillSync(options.peerID, written);
 
 if (options.version) {
-    console.log("tori v0.1.0");
+    console.log("tori v0.2.0");
 
     exit(0);
 }
