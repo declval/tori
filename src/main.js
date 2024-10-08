@@ -70,13 +70,11 @@ const download = new Download(metadata).on(
 
         if (!alreadyDownloaded) {
             try {
-                await download.tracker.completed(
-                    download.downloaded,
-                    download.leftToDownload(),
-                    download.uploaded
-                );
+                await download.tracker.completed();
             } catch (error) {
-                console.error(`Tracker request failed: ${error.message}`);
+                if (options.verbose) {
+                    console.error(`Tracker request failed: ${error.message}`);
+                }
             }
         }
 
