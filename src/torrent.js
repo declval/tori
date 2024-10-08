@@ -31,7 +31,14 @@ export class Torrent {
             .update(encode(decoded.info))
             .digest();
 
-        this.length = decoded.info.length;
+        if (decoded.info.length !== undefined) {
+            this.length = decoded.info.length;
+        } else {
+            this.length = decoded.info.files.reduce(
+                (sum, { length }) => sum + length,
+                0
+            );
+        }
 
         this.name = decoded.info.name.toString();
 

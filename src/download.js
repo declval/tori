@@ -31,12 +31,7 @@ export class Download extends EventEmitter {
         this.prevDownloaded = 0;
         this.prevTime = null;
         this.statusTimeout = null;
-        this.tracker = new Tracker(
-            this.metadata.announceList !== undefined
-                ? this.metadata.announceList.map((tier) => shuffle(tier))
-                : [[this.metadata.announce]],
-            this.metadata.infoHash
-        );
+        this.tracker = new Tracker(this);
         this.uploaded = 0;
     }
 
@@ -125,28 +120,12 @@ export class Download extends EventEmitter {
         }
 
         try {
-            await this.tracker.started(
-                this.downloaded,
-                this.leftToDownload(),
-                this.uploaded
-            );
+            await this.tracker.started();
         } catch (error) {
             console.error(`Tracker request failed: ${error.message}`);
 
             return;
         }
-
-        this.intervalTimeout = setInterval(async () => {
-            try {
-                await this.tracker.request(
-                    this.downloaded,
-                    this.leftToDownload(),
-                    this.uploaded
-                );
-            } catch (error) {
-                console.error(`Tracker request failed: ${error.message}`);
-            }
-        }, this.tracker.interval * 1000);
 
         if (!options.verbose) {
             this.statusTimeout = setInterval(() => {
@@ -168,16 +147,12 @@ export class Download extends EventEmitter {
             clearInterval(this.statusTimeout);
         }
 
-        clearInterval(this.intervalTimeout);
-
         try {
-            await this.tracker.stopped(
-                this.downloaded,
-                this.leftToDownload(),
-                this.uploaded
-            );
+            await this.tracker.stopped();
         } catch (error) {
-            console.error(`Tracker request failed: ${error.message}`);
+            if (options.verbose) {
+                console.error(`Tracker request failed: ${error.message}`);
+            }
         }
     }
 
@@ -282,15 +257,4 @@ function formatSpeed(speed) {
     }
 
     return `${speed.toFixed(1)}${units[i]}/s`;
-}
-
-function shuffle(array) {
-    const shuffled = [...array];
-
-    for (let i = 0; i < shuffled.length - 1; ++i) {
-        const j = randomInt(i, shuffled.length);
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-
-    return shuffled;
 }

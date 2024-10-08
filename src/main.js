@@ -31,12 +31,12 @@ export const options = values;
 
 options.peerID = Buffer.alloc(20);
 
-const written = options.peerID.write("-to0020-");
+const written = options.peerID.write("-to0030-");
 
 randomFillSync(options.peerID, written);
 
 if (options.version) {
-    console.log("tori v0.2.0");
+    console.log("tori v0.3.0");
 
     exit(0);
 }
@@ -70,13 +70,11 @@ const download = new Download(metadata).on(
 
         if (!alreadyDownloaded) {
             try {
-                await download.tracker.completed(
-                    download.downloaded,
-                    download.leftToDownload(),
-                    download.uploaded
-                );
+                await download.tracker.completed();
             } catch (error) {
-                console.error(`Tracker request failed: ${error.message}`);
+                if (options.verbose) {
+                    console.error(`Tracker request failed: ${error.message}`);
+                }
             }
         }
 
