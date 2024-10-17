@@ -1,9 +1,9 @@
 import { Buffer } from "node:buffer";
-import { createHash, randomInt } from "node:crypto";
+import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
-import { open, stat, statfs } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, open, statfs } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { stdout } from "node:process";
 import { options } from "./main.js";
 import { Peer } from "./peer.js";
@@ -22,8 +22,27 @@ export class Download extends EventEmitter {
         this.metadata = metadata;
 
         this.downloaded = 0;
+        this.files =
+            this.metadata.files !== undefined
+                ? this.metadata.files
+                : [
+                      {
+                          length: this.metadata.length,
+                          path: [this.metadata.name],
+                      },
+                  ];
         this.intervalTimeout = null;
-        this.output = join(options.output, this.metadata.name);
+        this.length =
+            this.metadata.length !== undefined
+                ? this.metadata.length
+                : this.metadata.files.reduce(
+                      (sum, { length }) => sum + length,
+                      0
+                  );
+        this.output =
+            this.metadata.length !== undefined
+                ? options.output
+                : join(options.output, this.metadata.name);
         this.peers = new Array(PEER_COUNT);
         this.piecesToDownload = this.metadata.hashes.map(
             (_hash, pieceIndex) => pieceIndex
@@ -37,19 +56,18 @@ export class Download extends EventEmitter {
 
     async checkDownloadedPieces() {
         const downloadedPieces = new Set();
-        const stats = await stat(this.output);
 
         for (
-            let i = 0, pieceIndex = 0;
-            i < stats.size && pieceIndex < this.metadata.hashes.length;
-            i += this.metadata.pieceLength, ++pieceIndex
+            let pieceIndex = 0;
+            pieceIndex < this.metadata.hashes.length;
+            ++pieceIndex
         ) {
             let piece;
 
             try {
                 piece = await this.readPiece(pieceIndex);
             } catch {
-                break;
+                continue;
             }
 
             if (this.checkPieceHash(piece, pieceIndex)) {
@@ -82,30 +100,26 @@ export class Download extends EventEmitter {
         const buffer = Buffer.alloc(this.metadata.pieceLength);
 
         let fileHandle;
+        let offset = 0;
 
-        try {
-            fileHandle = await open(this.output, "r");
+        for (const { path, length, position } of this.#pieceToFileLocations(
+            pieceIndex
+        )) {
+            try {
+                fileHandle = await open(path, "r");
 
-            await fileHandle.read(
-                buffer,
-                0,
-                this.pieceLength(pieceIndex),
-                pieceIndex * this.metadata.pieceLength
-            );
-        } finally {
-            await fileHandle?.close();
+                await fileHandle.read(buffer, offset, length, position);
+            } finally {
+                await fileHandle?.close();
+            }
+
+            offset += length;
         }
 
         return buffer;
     }
 
     async start() {
-        if (!existsSync(this.output)) {
-            const fileHandle = await open(this.output, "w");
-
-            await fileHandle.close();
-        }
-
         await this.checkDownloadedPieces();
 
         if (this.piecesToDownload.length === 0) {
@@ -127,6 +141,9 @@ export class Download extends EventEmitter {
             return;
         }
 
+        // console.log(this.tracker);
+        // process.exit(0);
+        //
         if (!options.verbose) {
             this.statusTimeout = setInterval(() => {
                 this.writeStatus();
@@ -158,18 +175,28 @@ export class Download extends EventEmitter {
 
     async writePiece(pieceIndex, piece) {
         let fileHandle;
+        let offset = 0;
 
-        try {
-            fileHandle = await open(this.output, "r+");
+        for (const { path, length, position } of this.#pieceToFileLocations(
+            pieceIndex
+        )) {
+            if (!existsSync(path)) {
+                await mkdir(dirname(path), { recursive: true });
 
-            await fileHandle.write(
-                piece,
-                0,
-                this.pieceLength(pieceIndex),
-                pieceIndex * this.metadata.pieceLength
-            );
-        } finally {
-            await fileHandle?.close();
+                const fileHandle = await open(path, "w");
+
+                await fileHandle.close();
+            }
+
+            try {
+                fileHandle = await open(path, "r+");
+
+                await fileHandle.write(piece, offset, length, position);
+            } finally {
+                await fileHandle?.close();
+            }
+
+            offset += length;
         }
     }
 
@@ -196,7 +223,7 @@ export class Download extends EventEmitter {
     }
 
     leftToDownload() {
-        return this.metadata.length - this.downloaded;
+        return this.length - this.downloaded;
     }
 
     pieceLength(pieceIndex) {
@@ -204,7 +231,7 @@ export class Download extends EventEmitter {
             return (
                 this.metadata.pieceLength -
                 (this.metadata.hashes.length * this.metadata.pieceLength -
-                    this.metadata.length)
+                    this.length)
             );
         }
 
@@ -214,7 +241,7 @@ export class Download extends EventEmitter {
     writeStatus() {
         const columns = Math.min(stdout.columns, MAX_COLUMNS);
         const downSpeed = `↓ ${formatSpeed(this.#downSpeed())} `;
-        const downloaded = `${((this.downloaded * 100) / this.metadata.length).toFixed(1)}%`;
+        const downloaded = `${((this.downloaded * 100) / this.length).toFixed(1)}%`;
         const name =
             this.metadata.name.length > MAX_NAME_LENGTH
                 ? `${this.metadata.name.slice(0, MAX_NAME_LENGTH - ELLIPSIS.length)}${ELLIPSIS}`
@@ -243,6 +270,51 @@ export class Download extends EventEmitter {
         this.prevTime = new Date();
 
         return speed;
+    }
+
+    #pieceToFileLocations(pieceIndex) {
+        const pieceOffset = pieceIndex * this.metadata.pieceLength;
+        const result = [];
+
+        let fileOffset = 0;
+        let i;
+        let pieceLength = this.pieceLength(pieceIndex);
+
+        for (i = 0; i < this.files.length; ++i) {
+            if (
+                pieceOffset >= fileOffset &&
+                pieceOffset < fileOffset + this.files[i].length
+            ) {
+                const remainingLength =
+                    this.files[i].length - (pieceOffset - fileOffset);
+
+                result.push({
+                    path: join(this.output, ...this.files[i].path),
+                    length: Math.min(remainingLength, pieceLength),
+                    position: pieceOffset - fileOffset,
+                });
+
+                pieceLength -= Math.min(remainingLength, pieceLength);
+
+                break;
+            }
+
+            fileOffset += this.files[i].length;
+        }
+
+        for (++i; pieceLength > 0; ++i) {
+            const length = Math.min(this.files[i].length, pieceLength);
+
+            result.push({
+                path: join(this.output, ...this.files[i].path),
+                length: length,
+                position: 0,
+            });
+
+            pieceLength -= length;
+        }
+
+        return result;
     }
 }
 
