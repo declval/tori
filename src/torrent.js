@@ -34,10 +34,11 @@ export class Torrent {
         if (decoded.info.length !== undefined) {
             this.length = decoded.info.length;
         } else {
-            this.length = decoded.info.files.reduce(
-                (sum, { length }) => sum + length,
-                0
-            );
+            this.files = decoded.info.files.map((file) => {
+                file.path = file.path.map((segment) => segment.toString());
+
+                return file;
+            });
         }
 
         this.name = decoded.info.name.toString();

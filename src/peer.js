@@ -271,7 +271,7 @@ export class Peer {
                 this.start = 0;
             }
 
-            if (this.download.downloaded === this.download.metadata.length) {
+            if (this.download.downloaded === this.download.length) {
                 this.socket.destroy();
 
                 return;
